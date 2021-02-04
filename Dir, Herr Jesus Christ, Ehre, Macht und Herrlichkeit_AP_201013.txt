@@ -1,0 +1,4 @@
+[DEFAULT]
+TITLE=DIR, HERR JESUS CHRST, EHRE, MACHT UND HERRLICHKEIT
+AUTHORS=T und M: Benjamin Pavageau, Ü: Gemeinschaft Emmanuel, S: Damien Rollo
+COPYRIGHT=© 2018 Für D, A, CH Gemeinschaft Emmanuel, Altötting.
