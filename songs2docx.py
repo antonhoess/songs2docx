@@ -1,15 +1,40 @@
-# pip install python-docx
+#!/usr/bin/env python
+
+"""This program allows the conversion from TXT files in a certain format to a DOCX file in a certain format."""
 
 from typing import Optional
 from docx import Document
 from docx.enum.style import WD_STYLE_TYPE
 from docx.shared import Pt, RGBColor, Cm, Inches
-import os
+import docx.text.paragraph
 import re
+import argparse
+import glob
+import os.path
+
+
+__author__ = "Anton Höß"
+__copyright__ = "Copyright 2021"
+__credits__ = list()
+__license__ = "BSD"
+__version__ = "0.1"
+__maintainer__ = "Anton Höß"
+__email__ = "anton.hoess42@gmail.com"
+__status__ = "Development"
 
 
 class Txt2Docx:
+    """The converter class."""
+
     def __init__(self, filename: str) -> None:
+        """ Initializes the Converter.
+
+        Parameters
+        ----------
+        filename : str
+            The filename of the TXT file to convert.
+        """
+
         self._filename = filename
 
         # Document
@@ -30,7 +55,35 @@ class Txt2Docx:
         self._build_document()
     # end def
 
-    def _read_file(self):
+    def save(self, filename: Optional[str] = None) -> None:
+        """ Saves the build DOCX document to the given filename. If no filename is provided, the base-filename of the TXT file gets used.
+
+        Parameters
+        ----------
+        filename : str, optional
+            The filename to save the DOCX document to.
+        """
+
+        # Determine filename
+        if not filename:
+            filename = self._filename
+
+            if filename.endswith(".txt"):
+                filename = filename[:-4]
+
+            filename += ".docx"
+        # end if
+
+        # Set page settings
+        self._set_page_settings()
+
+        # Save the document
+        self._document.save(filename)
+    # end def
+
+    def _read_file(self) -> None:
+        """ Reads the file and stores the parsed values into the class members."""
+
         # Read file
         f = open(self._filename, "r", encoding="utf-8")
         lines = f.read().splitlines()
@@ -48,7 +101,7 @@ class Txt2Docx:
                 line = lines[0]
 
                 if line.startswith(f"{key}="):
-                    value = line[len(f"{key}="):]  # values.append(line[len(f"{key}=")])
+                    value = line[len(f"{key}="):]
                 # end if
             # end if
 
@@ -74,7 +127,7 @@ class Txt2Docx:
 
             if line:
                 if start_block:
-                    block += os.linesep + line
+                    block += "\n" + line
                 else:
                     start_block = True
                     block = line
@@ -91,9 +144,8 @@ class Txt2Docx:
         self._text.append(block)
     # end def
 
-    def _build_document(self):
-        # Create the document
-        #####################
+    def _build_document(self) -> None:
+        """ Builds the DOCX document from the previously parsed meta values and text blocks."""
 
         # Title
         p = self._document.add_paragraph(self._title, style="title")
@@ -123,8 +175,11 @@ class Txt2Docx:
                 raise ValueError(f"The bold marker's indices ({total_indices}) are not in ascending order")
             # end if
 
-            p = self._document.add_paragraph("")
+            p = self._document.add_paragraph("", style="text")
             self._set_paragraph_format(p)
+
+            tab_stops = p.paragraph_format.tab_stops
+            _tab_stop = tab_stops.add_tab_stop(Inches(4.5))
 
             pos = 0
             for start, end in bold_indices:
@@ -141,7 +196,7 @@ class Txt2Docx:
 
             # Add line between blocks
             if tb < len(self._text) - 1:
-                p = self._document.add_paragraph("")
+                p = self._document.add_paragraph("", style="text")
                 self._set_paragraph_format(p)
             # end if
         # end def
@@ -153,53 +208,9 @@ class Txt2Docx:
         self._set_paragraph_format(p)
     # end def
 
-    def save(self, filename: Optional[str] = None) -> None:
-        # Determine filename
-        if not filename:
-            filename = self._filename
+    def _define_styles(self) -> None:
+        """ Defines the styles used for the DOCX document."""
 
-            if filename.endswith(".txt"):
-                filename = filename[:-4]
-
-            filename += ".docx"
-        # end if
-
-        # Set page settings
-        self._set_page_settings()
-
-        # Save the document
-        self._document.save(filename)
-    # end def
-
-    def _set_page_settings(self):
-        # Changing page settings
-        sections = self._document.sections
-
-        for section in sections:
-            # Page size
-            section.page_width = Inches(8.5)
-            section.page_height = Inches(11.)
-
-            # Margin
-            margin = Cm(2.5)
-            section.top_margin = margin
-            section.bottom_margin = margin
-            section.left_margin = margin
-            section.right_margin = margin
-        # end for
-    # end def
-
-    @staticmethod
-    def _set_paragraph_format(paragraph) -> None:
-        paragraph_format = paragraph.paragraph_format
-        paragraph_format.space_before = Pt(0)
-        paragraph_format.space_after = Pt(0)
-        paragraph_format.line_spacing = 1
-    # end def
-
-    def _define_styles(self):
-        # Define styles
-        ###############
         self._styles = self._document.styles
 
         # Title
@@ -217,28 +228,90 @@ class Txt2Docx:
         style.font.name = 'Arial'
         style.font.size = Pt(6)
 
-        # Text normal
-        style = self._styles.add_style("text_normal", WD_STYLE_TYPE.PARAGRAPH)
+        # Text
+        style = self._styles.add_style("text", WD_STYLE_TYPE.PARAGRAPH)
         style.font.name = 'Arial'
         style.font.size = Pt(11)
-
-        # Text bold
-        style = self._styles.add_style("text_bold", WD_STYLE_TYPE.PARAGRAPH)
-        style.font.name = 'Arial'
-        style.font.size = Pt(11)
-        style.font.bold = True
 
         # Copyright
         style = self._styles.add_style("copyright", WD_STYLE_TYPE.PARAGRAPH)
         style.font.name = 'Arial'
         style.font.size = Pt(8)
     # end def
+
+    def _set_page_settings(self):
+        """ Changes the page settings."""
+
+        sections = self._document.sections
+
+        for section in sections:
+            # Page size
+            section.page_width = Inches(8.5)
+            section.page_height = Inches(11.)
+
+            # Margin
+            margin = Cm(2.5)
+            section.top_margin = margin
+            section.bottom_margin = margin
+            section.left_margin = margin
+            section.right_margin = margin
+        # end for
+    # end def
+
+    @staticmethod
+    def _set_paragraph_format(paragraph: docx.text.paragraph.Paragraph) -> None:
+        """ Sets some formatting attributes to the given paragraph.
+
+        Parameters
+        ----------
+        paragraph : docx.text.paragraph.Paragraph
+            The paragraph to be formatted.
+        """
+
+        paragraph_format = paragraph.paragraph_format
+        paragraph_format.space_before = Pt(0)
+        paragraph_format.space_after = Pt(0)
+        paragraph_format.line_spacing = 1
+    # end def
 # end class
 
 
-def main():
-    doc = Txt2Docx(filename=r"Dir, Herr Jesus Christ, Ehre, Macht und Herrlichkeit_AP_201013.txt")
-    doc.save()
+def main() -> None:
+    """ The main function which parses the program arguments and performs the conversion of the specified files."""
+
+    # Set up parser for command line arguments
+    parser = argparse.ArgumentParser(description="Convert TXT files to DOCX files.")
+    parser.add_argument("filenames", type=str, nargs='+', help="Filenames")
+
+    # Parse arguments
+    args = parser.parse_args()
+
+    files = list()
+
+    for filename in args.filenames:
+        # If argument is a filename, add it ...
+        if os.path.isfile(filename):
+            files.append(filename)
+        else:
+            # ... otherwise it is a filter using wildcards, so evaluate it and add all matched files
+            for fn in glob.glob(filename):
+                if os.path.isfile(fn):
+                    files.append(fn)
+                # end if
+            # end for
+        # end if
+    # end for
+
+    # Remove duplicates
+    files = set(files)
+
+    # Process all files
+    for file in files:
+        print(f"Processing file \"{file}\"...", end="")
+        doc = Txt2Docx(filename=file)
+        doc.save()
+        print(" Finished!")
+    # end for
 # end def
 
 
