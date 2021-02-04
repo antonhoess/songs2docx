@@ -14,5 +14,5 @@ conda install --name songs2docx python-docx
 ```bash
 cd songs2docx/
 conda activate songs2docx
-python songs2docx.py *.txt
+python songs2docx.py songs/*.txt --output=output
 ```

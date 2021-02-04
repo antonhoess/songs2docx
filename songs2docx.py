@@ -26,16 +26,19 @@ __status__ = "Development"
 class Txt2Docx:
     """The converter class."""
 
-    def __init__(self, filename: str) -> None:
+    def __init__(self, filename: str, output: Optional[str] = None) -> None:
         """ Initializes the Converter.
 
         Parameters
         ----------
         filename : str
             The filename of the TXT file to convert.
+        output : str, optional
+            The output folder to store the converted DOCX files to.
         """
 
         self._filename = filename
+        self._output = output
 
         # Document
         self._document = Document()
@@ -66,7 +69,7 @@ class Txt2Docx:
 
         # Determine filename
         if not filename:
-            filename = self._filename
+            filename = os.path.basename(self._filename)
 
             if filename.endswith(".txt"):
                 filename = filename[:-4]
@@ -78,7 +81,10 @@ class Txt2Docx:
         self._set_page_settings()
 
         # Save the document
-        self._document.save(filename)
+        if not os.path.exists(self._output):
+            os.mkdir(self._output)
+
+        self._document.save(os.path.join(self._output, filename))
     # end def
 
     def _read_file(self) -> None:
@@ -282,6 +288,7 @@ def main() -> None:
     # Set up parser for command line arguments
     parser = argparse.ArgumentParser(description="Convert TXT files to DOCX files.")
     parser.add_argument("filenames", type=str, nargs='+', help="Filenames")
+    parser.add_argument("--output", type=str, default=".", help="Output folder")
 
     # Parse arguments
     args = parser.parse_args()
@@ -307,8 +314,8 @@ def main() -> None:
 
     # Process all files
     for file in files:
-        print(f"Processing file \"{file}\"...", end="")
-        doc = Txt2Docx(filename=file)
+        print(f"Processing file \"{os.path.basename(file)}\"...", end="")
+        doc = Txt2Docx(filename=file, output=args.output)
         doc.save()
         print(" Finished!")
     # end for
