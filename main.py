@@ -4,15 +4,8 @@ from typing import Optional
 from docx import Document
 from docx.enum.style import WD_STYLE_TYPE
 from docx.shared import Pt, RGBColor, Cm, Inches
-import configparser
-
-
-str_text = \
-"""1. Jesus lebt! Er ist der Retter, durch sein Kreuz schenkt er Erlösung.  Dm F 
-Gottes Sohn, auf ihn sind wir getauft. Er ist Sieger.   Gm Bb
-Wir warn tot in unsern Sünden, durch sein Blut ist uns vergeben.    Dm F
-Ja, er lebt! Wir glauben: Er ist der Herr!  Gm C4 C
-"""
+import os
+import re
 
 
 class Txt2Docx:
@@ -27,9 +20,10 @@ class Txt2Docx:
         self._define_styles()
 
         # Read the file
-        self._title = "???"
-        self._authors = "???"
-        self._copyright = "???"
+        self._title = None
+        self._authors = None
+        self._copyright = None
+        self._text = list()
 
         # Create the document
         self._read_file()
@@ -37,13 +31,64 @@ class Txt2Docx:
     # end def
 
     def _read_file(self):
-        config = configparser.ConfigParser()
-        config.read(self._filename, "utf-8")
+        # Read file
+        f = open(self._filename, "r", encoding="utf-8")
+        lines = f.read().splitlines()
 
-        default_section = config[config.default_section]
-        self._title = default_section['TITLE']
-        self._authors = default_section['AUTHORS']
-        self._copyright = default_section['COPYRIGHT']
+        # Read meta information
+        keys = ("TITLE", "AUTHORS", "COPYRIGHT")
+        values = list()
+        line_no = 0
+
+        for key in keys:
+            line_no += 1
+            value = None
+
+            if len(lines) >= 0:
+                line = lines[0]
+
+                if line.startswith(f"{key}="):
+                    value = line[len(f"{key}="):]  # values.append(line[len(f"{key}=")])
+                # end if
+            # end if
+
+            if value:
+                values.append(value)
+            else:
+                raise ValueError(f"Key '{key}' not defined in line {line_no}")
+            # end if
+
+            # Delete line
+            del lines[0]
+        # end for
+
+        self._title, self._authors, self._copyright = values
+        self._title = self._title.upper()
+
+        # Read blocks (which are separated by space)
+        start_block = False
+        block = None
+
+        for line in lines:
+            line = line.strip()
+
+            if line:
+                if start_block:
+                    block += os.linesep + line
+                else:
+                    start_block = True
+                    block = line
+                # end if
+
+            else:
+                if start_block:
+                    start_block = False
+                    self._text.append(block)
+                    block = None
+                # end if
+            # end if
+        # end for
+        self._text.append(block)
     # end def
 
     def _build_document(self):
@@ -60,23 +105,52 @@ class Txt2Docx:
         p = self._document.add_paragraph("", style="authors_after")
         self._set_paragraph_format(p)
 
-        ## Text
-        self._read_file()  # XXX
+        # Text
+        for tb, text_block in enumerate(self._text):
+            bold_start_indices = [m.start() for m in re.finditer('<b>', text_block)]
+            bold_end_indices = [m.start() for m in re.finditer('</b>', text_block)]
 
-        p = self._document.add_paragraph(str_text, style="text_normal")
-        self._set_paragraph_format(p)
+            if len(bold_start_indices) != len(bold_end_indices):
+                raise ValueError(f"The number ({len(bold_start_indices)}) of bold starting tags (<b>) is not equal to the number "
+                      f"({len(bold_end_indices)}) of bold ending tags (</b>)")
+            # end if
+            bold_indices = list(zip(bold_start_indices, bold_end_indices))
+
+            # Check if all starting and ending marker indices are in ascending order
+            total_indices = [index for pair in bold_indices for index in pair]
+
+            if total_indices != sorted(total_indices[:]):
+                raise ValueError(f"The bold marker's indices ({total_indices}) are not in ascending order")
+            # end if
+
+            p = self._document.add_paragraph("")
+            self._set_paragraph_format(p)
+
+            pos = 0
+            for start, end in bold_indices:
+                if start > pos:
+                    p.add_run(text_block[pos:start])
+
+                p.add_run(text_block[start + 3:end]).bold = True
+                pos = end + 4
+            # end for
+
+            if pos < len(text_block):
+                p.add_run(text_block[pos:])
+            # end if
+
+            # Add line between blocks
+            if tb < len(self._text) - 1:
+                p = self._document.add_paragraph("")
+                self._set_paragraph_format(p)
+            # end if
+        # end def
 
         # Copyright
         p = self._document.add_paragraph("", style="copyright")
         self._set_paragraph_format(p)
         p = self._document.add_paragraph(self._copyright, style="copyright")
         self._set_paragraph_format(p)
-
-        # XXX Test
-        p = self._document.add_paragraph("")
-        p.add_run('And this is text ')
-        p.add_run('some bold text ').bold = True
-        p.add_run('and italic text.')
     # end def
 
     def save(self, filename: Optional[str] = None) -> None:
