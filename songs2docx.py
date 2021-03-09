@@ -2,7 +2,7 @@
 
 """This program allows the conversion from TXT files in a certain format to a DOCX file in a certain format."""
 
-from typing import Optional
+from typing import List, Tuple, Optional
 from docx import Document
 from docx.enum.style import WD_STYLE_TYPE
 import docx.enum.text
@@ -29,7 +29,7 @@ class Txt2Docx:
     """The converter class."""
 
     def __init__(self, filename: str, output: Optional[str] = None) -> None:
-        """ Initializes the Converter.
+        """Initializes the Converter.
 
         Parameters
         ----------
@@ -63,7 +63,7 @@ class Txt2Docx:
     # end def
 
     def save(self, filename: Optional[str] = None) -> None:
-        """ Saves the build DOCX document to the given filename.
+        """Saves the build DOCX document to the given filename.
         If no filename is provided, the base-filename of the TXT file gets used.
 
         Parameters
@@ -93,7 +93,7 @@ class Txt2Docx:
     # end def
 
     def _read_file(self) -> None:
-        """ Reads the file and stores the parsed values into the class members."""
+        """Reads the file and stores the parsed values into the class members."""
 
         # Read file
         f = open(self._filename, "r", encoding="utf-8")
@@ -160,81 +160,95 @@ class Txt2Docx:
     # end def
 
     def _build_document(self) -> None:
-        """ Builds the DOCX document from the previously parsed meta values and text blocks."""
+        """Builds the DOCX document from the previously parsed meta values and text blocks."""
 
         # Title
-        p = self._document.add_paragraph(self._title, style="title")
-        self._set_paragraph_format(p)
-        tab_stops = p.paragraph_format.tab_stops
-        _tab_stop = tab_stops.add_tab_stop(Inches(4.58))
+        p = self._add_paragraph(text=self._title, style="title")
 
         p.add_run(text="\t")
         run = p.add_run(text=self._ref_no)
         run.font.highlight_color = docx.enum.text.WD_COLOR_INDEX.YELLOW
 
         # Authors
-        p = self._document.add_paragraph(self._authors, style="authors")
-        self._set_paragraph_format(p)
-        tab_stops = p.paragraph_format.tab_stops
-        _tab_stop = tab_stops.add_tab_stop(Inches(4.58))
-
-        p = self._document.add_paragraph("", style="authors_after")
-        self._set_paragraph_format(p)
+        self._add_paragraph(text=self._authors, style="authors")
+        self._add_paragraph(text="", style="empty_line")
 
         # Text
         for tb, text_block in enumerate(self._text):
-            bold_start_indices = [m.start() for m in re.finditer('<b>', text_block)]
-            bold_end_indices = [m.start() for m in re.finditer('</b>', text_block)]
-
-            if len(bold_start_indices) != len(bold_end_indices):
-                raise ValueError(f"The number ({len(bold_start_indices)}) of bold starting tags "
-                                 f"(<b>) is not equal to the number "
-                                 f"({len(bold_end_indices)}) of bold ending tags (</b>)")
-            # end if
-            bold_indices = list(zip(bold_start_indices, bold_end_indices))
+            bold_indices = self._get_bold_indices(text_block)
 
             # Check if all starting and ending marker indices are in ascending order
             total_indices = [index for pair in bold_indices for index in pair]
 
             if total_indices != sorted(total_indices[:]):
-                raise ValueError(f"The bold marker's indices ({total_indices}) are not in ascending order")
+                raise ValueError(f"The bold marker's indices ({total_indices}) are not in ascending order!")
             # end if
 
-            p = self._document.add_paragraph("", style="text")
-            self._set_paragraph_format(p)
+            # Manipulate the string to split it into a paragraph per line
+            # -----------------------------------------------------------
 
-            tab_stops = p.paragraph_format.tab_stops
-            _tab_stop = tab_stops.add_tab_stop(Inches(4.58))
+            # Get newline indices
+            newlines_positions = self._find_all_substrings(text_block, "\n")
+            new_text_block = text_block.split("\n")
 
-            pos = 0
-            for start, end in bold_indices:
-                if start > pos:
-                    p.add_run(text_block[pos:start])
+            # If there are any bold parts in the current text block, determine for each line break
+            # if it is within a bold area or not. If so, add a bold ending tag to the end of the line
+            # and a bold opening tag to the beginning of the next line.
+            if len(bold_indices) > 0:
+                for np, newlines_position in enumerate(newlines_positions):
+                    within_bold_block = False
 
-                p.add_run(text_block[start + 3:end]).bold = True
-                pos = end + 4
+                    for start, end in bold_indices:
+                        if start < newlines_position < end:
+                            within_bold_block = True
+                            break
+                        # end fi
+                    # end for
+
+                    if within_bold_block:
+                        new_text_block[np] += "</b>"
+                        new_text_block[np + 1] = "<b>" + new_text_block[np + 1]
+                    # end if
+                # end for
+            # end if
+
+            # Write the paragraphs and the runs within every one
+            # Each line becomes its own paragraph
+            for line in new_text_block:
+                # Recalculate the bold indices for each line
+                bold_indices = self._get_bold_indices(line)
+
+                # Start with an empty paragraph and add runs to it later on
+                p = self._add_paragraph(text="", style="text")
+
+                # Handle runs
+                pos = 0
+                for start, end in bold_indices:
+                    if start > pos:
+                        p.add_run(line[pos:start])
+
+                    p.add_run(line[start + 3:end]).bold = True
+                    pos = end + 4
+                # end for
+
+                if pos < len(line):
+                    p.add_run(line[pos:])
+                # end if
             # end for
-
-            if pos < len(text_block):
-                p.add_run(text_block[pos:])
-            # end if
 
             # Add line between blocks
             if tb < len(self._text) - 1:
-                p = self._document.add_paragraph("", style="text_par_empty_line")
-                self._set_paragraph_format(p)
+                self._add_paragraph(text="", style="empty_line")
             # end if
         # end def
 
         # Copyright
-        p = self._document.add_paragraph("", style="copyright")
-        self._set_paragraph_format(p)
-        p = self._document.add_paragraph(self._copyright, style="copyright")
-        self._set_paragraph_format(p)
+        self._add_paragraph(text="", style="empty_line")
+        self._add_paragraph(text=self._copyright, style="empty_line")
     # end def
 
     def _define_styles(self) -> None:
-        """ Defines the styles used for the DOCX document."""
+        """Defines the styles used for the DOCX document."""
 
         self._styles = self._document.styles
 
@@ -249,17 +263,9 @@ class Txt2Docx:
         style = self._styles.add_style("authors", WD_STYLE_TYPE.PARAGRAPH)
         style.font.name = 'Arial'
         style.font.size = Pt(8)
-        style = self._styles.add_style("authors_after", WD_STYLE_TYPE.PARAGRAPH)
-        style.font.name = 'Arial'
-        style.font.size = Pt(6)
 
         # Text
         style = self._styles.add_style("text", WD_STYLE_TYPE.PARAGRAPH)
-        style.font.name = 'Arial'
-        style.font.size = Pt(11)
-
-        # Text Paragraph Empty Line
-        style = self._styles.add_style("text_par_empty_line", WD_STYLE_TYPE.PARAGRAPH)
         style.font.name = 'Arial'
         style.font.size = Pt(11)
 
@@ -267,10 +273,15 @@ class Txt2Docx:
         style = self._styles.add_style("copyright", WD_STYLE_TYPE.PARAGRAPH)
         style.font.name = 'Arial'
         style.font.size = Pt(8)
+
+        # Empty Line
+        style = self._styles.add_style("empty_line", WD_STYLE_TYPE.PARAGRAPH)
+        style.font.name = 'Arial'
+        style.font.size = Pt(6)
     # end def
 
     def _set_page_settings(self):
-        """ Changes the page settings."""
+        """Changes the page settings."""
 
         sections = self._document.sections
 
@@ -290,7 +301,7 @@ class Txt2Docx:
 
     @staticmethod
     def _set_paragraph_format(paragraph: docx.text.paragraph.Paragraph) -> None:
-        """ Sets some formatting attributes to the given paragraph.
+        """Sets some formatting attributes to the given paragraph.
 
         Parameters
         ----------
@@ -303,16 +314,124 @@ class Txt2Docx:
         paragraph_format.space_after = Pt(0)
         paragraph_format.line_spacing = 1
     # end def
+
+    def _add_paragraph(self, text: str, style: str) -> docx.text.paragraph.Paragraph:
+        """Creates a paragraph using the given style (incl. adding tabstops) and adds it to the document.
+
+        Parameters
+        ----------
+        text : str
+            The text to place in the paragraph.
+        style : str
+            The style to format the paragraph.
+            
+        Returns
+        -------
+        paragraph: docx.text.paragraph.Paragraph
+            The created paragraph.
+        """
+
+        p = self._document.add_paragraph(text=text, style=style)
+        self._set_paragraph_format(p)
+        tab_stops = p.paragraph_format.tab_stops
+        _tab_stop = tab_stops.add_tab_stop(Cm(self._tab_indent))
+
+        return p
+    # end def
+
+    @staticmethod
+    def _find_all_substrings(search_str: str, sub_str: str) -> List[int]:
+        """Searches all (non-overlapping) substrings in a given string.
+
+        Parameters
+        ----------
+        search_str : str
+            The string to search in.
+        sub_str : str
+            The substring to search for.
+            
+        Returns
+        -------
+        substrings: list of str
+            The list of found substrings positions.
+        """
+
+        start = 0
+
+        indices = list()
+
+        while True:
+            start = search_str.find(sub_str, start)
+
+            if start == -1:
+                break
+            else:
+                indices.append(start)
+                start += len(sub_str)
+            # end if
+        # end while
+
+        return indices
+    # end def
+
+    @staticmethod
+    def _get_bold_indices(text: str) -> List[Tuple[int, int]]:
+        """Searches all (non-overlapping) substrings in a given string.
+
+        Parameters
+        ----------
+        text : str
+            The text to search for bold tags.
+
+        Returns
+        -------
+        bold_indices: list of (int, int)
+            List of tuples with start and end tag for each bold block.
+        """
+
+        bold_start_indices = [m.start() for m in re.finditer("<b>", text)]
+        bold_end_indices = [m.start() for m in re.finditer("</b>", text)]
+
+        if len(bold_start_indices) != len(bold_end_indices):
+            raise ValueError(f"The number ({len(bold_start_indices)}) of bold starting tags "
+                             f"(<b>) is not equal to the number "
+                             f"({len(bold_end_indices)}) of bold ending tags (</b>)")
+        # end if
+        bold_indices = list(zip(bold_start_indices, bold_end_indices))
+
+        return bold_indices
+    # end def
 # end class
 
 
 def main() -> None:
-    """ The main function which parses the program arguments and performs the conversion of the specified files."""
+    """The main function which parses the program arguments and performs the conversion of the specified files."""
+
+    def str2bool(v):
+        if isinstance(v, bool):
+            return v
+        # end if
+
+        if v.lower() in ('yes', 'true', 't', 'y', '1'):
+            return True
+
+        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+            return False
+
+        else:
+            raise argparse.ArgumentTypeError('Boolean value expected.')
+        # end if
+    # end def
 
     # Set up parser for command line arguments
     parser = argparse.ArgumentParser(description="Convert TXT files to DOCX files.")
-    parser.add_argument("filenames", type=str, nargs='+', help="Filenames")
-    parser.add_argument("--output", type=str, default=".", help="Output folder")
+    parser.add_argument("filenames", type=str, nargs='+',
+                        help="Filenames")
+    parser.add_argument("--output", type=str, default=".",
+                        help="Output folder")
+    parser.add_argument("--suppress_error_output", type=str2bool, default=True,
+                        help="Suppress the error output (traceback) and only print the error string "
+                             "without any further information.")
 
     # Parse arguments
     args = parser.parse_args()
@@ -339,12 +458,16 @@ def main() -> None:
     # Process all files
     for file in files:
         print(f"Processing file \"{os.path.basename(file)}\"...", end="")
+
         try:
             doc = Txt2Docx(filename=file, output=args.output)
             doc.save()
             print(" Finished!")
         except Exception as e:
             print(f"\n=> ERROR occurred: {e}")
+            if not args.suppress_error_output:
+                raise e
+            # end if
         # end try
     # end for
 # end def
