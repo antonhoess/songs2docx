@@ -54,7 +54,7 @@ class Txt2Docx:
         self._ref_no = None
         self._authors = None
         self._copyright = None
-        self._tab_indent = 11.65
+        self._tab_indent = 11.64
         self._text = list()
 
         # Create the document
