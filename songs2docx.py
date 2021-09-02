@@ -6,13 +6,14 @@ from typing import List, Tuple, Optional
 from docx import Document
 from docx.enum.style import WD_STYLE_TYPE
 import docx.enum.text
-from docx.shared import Pt, RGBColor, Cm, Inches
+from docx.shared import Pt, RGBColor, Mm, Cm
 import docx.text.paragraph
 import docx.text.run
 import re
 import argparse
 import glob
 import os.path
+from collections import namedtuple
 
 
 __author__ = "Anton Höß"
@@ -51,6 +52,7 @@ class Txt2Docx:
 
         # Read the file
         self._title = None
+        self._title_original = None
         self._ref_no = None
         self._authors = None
         self._copyright = None
@@ -62,7 +64,7 @@ class Txt2Docx:
         self._build_document()
     # end def
 
-    def save(self, filename: Optional[str] = None) -> None:
+    def save(self, filename: Optional[str] = None, force_overwrite: bool = False) -> None:
         """Saves the build DOCX document to the given filename.
         If no filename is provided, the base-filename of the TXT file gets used.
 
@@ -70,6 +72,8 @@ class Txt2Docx:
         ----------
         filename : str, optional
             The filename to save the DOCX document to.
+        force_overwrite : bool, default False
+            Indicates if the output file(s) shall get overwritten if they already exist.
         """
 
         # Determine filename
@@ -89,7 +93,12 @@ class Txt2Docx:
         if not os.path.exists(self._output):
             os.mkdir(self._output)
 
-        self._document.save(os.path.join(self._output, filename))
+        fn_out = os.path.join(self._output, filename)
+
+        if not os.path.exists(fn_out) or force_overwrite:
+            self._document.save(fn_out)
+        else:
+            raise FileExistsError(f"File {fn_out} already exists and therefore not got overwritten.")
     # end def
 
     def _read_file(self) -> None:
@@ -100,7 +109,8 @@ class Txt2Docx:
         lines = f.read().splitlines()
 
         # Read meta information - the assigned value indicates if this key is mandatory or not
-        keys = {"TITLE": True, "REF_NO": True, "AUTHORS": True, "COPYRIGHT": True, "TAB_INDENT": False}
+        keys = {"TITLE": True, "TITLE_ORIGINAL": False, "REF_NO": False,
+                "AUTHORS": True, "COPYRIGHT": True, "TAB_INDENT": False}
         values = dict()
         line_no = 0
 
@@ -127,10 +137,13 @@ class Txt2Docx:
             # end if
         # end for
 
-        self._title = values["TITLE"].upper()
-        self._ref_no = values["REF_NO"]
-        self._authors = values["AUTHORS"]
-        self._copyright = values["COPYRIGHT"]
+        self._title = values["TITLE"].strip().upper()
+        self._title_original = values["TITLE_ORIGINAL"].strip() \
+            if values.get("TITLE_ORIGINAL") is not None else self._title_original
+        self._ref_no = values.get("REF_NO").strip() \
+            if values.get("REF_NO") is not None else None
+        self._authors = values["AUTHORS"].strip()
+        self._copyright = values["COPYRIGHT"].strip()
         self._tab_indent = float(values["TAB_INDENT"]) if values.get("TAB_INDENT") is not None else self._tab_indent
 
         # Read blocks (which are separated by space)
@@ -163,11 +176,16 @@ class Txt2Docx:
         """Builds the DOCX document from the previously parsed meta values and text blocks."""
 
         # Title
-        p = self._add_paragraph(text=self._title, style="title")
+        title = self._title
 
-        p.add_run(text="\t")
-        run = p.add_run(text=self._ref_no)
-        run.font.highlight_color = docx.enum.text.WD_COLOR_INDEX.YELLOW
+        if self._title_original is not None:
+            title += " # " + self._title_original
+        p = self._add_paragraph(text=title, style="title")
+
+        if self._ref_no is not None:
+            p.add_run(text="\t")
+            run = p.add_run(text=self._ref_no)
+            run.font.highlight_color = docx.enum.text.WD_COLOR_INDEX.YELLOW
 
         # Authors
         self._add_paragraph(text=self._authors, style="authors")
@@ -287,8 +305,8 @@ class Txt2Docx:
 
         for section in sections:
             # Page size
-            section.page_width = Inches(8.5)
-            section.page_height = Inches(11.)
+            section.page_width = Mm(210)
+            section.page_height = Mm(270)
 
             # Margin
             margin = Cm(2.5)
@@ -316,7 +334,7 @@ class Txt2Docx:
     # end def
 
     def _add_paragraph(self, text: str, style: str) -> docx.text.paragraph.Paragraph:
-        """Creates a paragraph using the given style (incl. adding tabstops) and adds it to the document.
+        """Creates a paragraph using the given style (incl. adding tab stops) and adds it to the document.
 
         Parameters
         ----------
@@ -407,6 +425,31 @@ class Txt2Docx:
 def main() -> None:
     """The main function which parses the program arguments and performs the conversion of the specified files."""
 
+    def get_base_path_from_wildcard_path(wc_path: str) -> Tuple[str, int]:
+        wc_path = os.path.normpath(wc_path)
+        parts = wc_path.split(os.sep)
+
+        # Special treatment for Windows drive letters
+        drive = os.path.splitdrive(wc_path)[0]
+
+        if parts[0] == drive:
+            parts[0] = drive + os.path.sep
+
+        cur_path = ""
+        parts_cnt = 0
+        for part in parts:
+            tmp_path = os.path.join(cur_path, part)
+
+            if not os.path.exists(tmp_path):
+                break
+
+            parts_cnt += 1
+            cur_path = os.path.join(cur_path, part)
+        # end for
+
+        return cur_path, parts_cnt
+    # end def
+
     def str2bool(v):
         if isinstance(v, bool):
             return v
@@ -425,10 +468,13 @@ def main() -> None:
 
     # Set up parser for command line arguments
     parser = argparse.ArgumentParser(description="Convert TXT files to DOCX files.")
-    parser.add_argument("filenames", type=str, nargs='+',
-                        help="Filenames")
+    parser.add_argument("paths", type=str, nargs='+',
+                        help=r"Filenames or folder base paths. Accepts wildcards as well as "
+                             r"\**\ for recursive search. Example: ./**/*.txt.")
     parser.add_argument("--output", type=str, default=".",
                         help="Output folder")
+    parser.add_argument("--force_overwrite", type=str2bool, default=False,
+                        help="Overwrite existing output files.")
     parser.add_argument("--suppress_error_output", type=str2bool, default=True,
                         help="Suppress the error output (traceback) and only print the error string "
                              "without any further information.")
@@ -436,32 +482,40 @@ def main() -> None:
     # Parse arguments
     args = parser.parse_args()
 
-    files = list()
+    FilePath = namedtuple("FilePath", "base_path rel_path filename")
+    file_paths = list()
 
-    for filename in args.filenames:
-        # If argument is a filename, add it ...
-        if os.path.isfile(filename):
-            files.append(filename)
+    for path in args.paths:
+        # If argument is a path, add it ...
+        if os.path.isfile(path):
+            p, f = os.path.basename(path)
+            file_paths.append(FilePath(p, "", f))
         else:
             # ... otherwise it is a filter using wildcards, so evaluate it and add all matched files
-            for fn in glob.glob(filename):
+            base_path, base_path_parts_cnt = get_base_path_from_wildcard_path(path)
+
+            for fn in glob.glob(path, recursive=True):
                 if os.path.isfile(fn):
-                    files.append(fn)
+                    p, f = os.path.split(fn)
+                    file_paths.append(FilePath(base_path, p[len(base_path) + 1:], f))
                 # end if
             # end for
         # end if
     # end for
 
     # Remove duplicates
-    files = set(files)
+    # files = set(files)  # Not working anymore when not using pure filepaths
 
     # Process all files
-    for file in files:
-        print(f"Processing file \"{os.path.basename(file)}\"...", end="")
+    for base_path, rel_path, file in file_paths:
+        print(f"Processing file \"{file}\"...", end="")
 
         try:
-            doc = Txt2Docx(filename=file, output=args.output)
-            doc.save()
+            out_path = os.path.join(args.output, rel_path)
+            if not os.path.exists(out_path):
+                os.makedirs(out_path)
+            doc = Txt2Docx(filename=os.path.join(base_path, rel_path, file), output=out_path)
+            doc.save(force_overwrite=args.force_overwrite)
             print(" Finished!")
         except Exception as e:
             print(f"\n=> ERROR occurred: {e}")

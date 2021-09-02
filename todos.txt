@@ -1,0 +1,1 @@
+* Make force_overwrite a tri-state parameter. The third state might allow to let the user choose, if the file shall get overridden. Or is this a second parameter in combination with the already existing force_override? There might be two cases: ask user (with pre defined value YES or NO, which can be chosen with only a keyboard hit).
