@@ -209,6 +209,11 @@ class Txt2Docx:
             newlines_positions = self._find_all_substrings(text_block, "\n")
             new_text_block = text_block.split("\n")
 
+            # Make all first letters capitalized (should work for all cases, even if there's e.g. a "1. ",
+            # since in this case nothing will happen and this lines' text always starts with a capital letter
+            for b, block in enumerate(new_text_block):
+                new_text_block[b] = block[0].upper() + block[1:]
+
             # If there are any bold parts in the current text block, determine for each line break
             # if it is within a bold area or not. If so, add a bold ending tag to the end of the line
             # and a bold opening tag to the beginning of the next line.
