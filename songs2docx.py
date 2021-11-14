@@ -137,6 +137,7 @@ class Txt2Docx:
             # end if
         # end for
 
+        # self._title = values["TITLE"].strip().replace("ß", "ẞ").upper()  # unsure, if it's a good idea to use "ẞ"
         self._title = values["TITLE"].strip().upper()
         self._title_original = values["TITLE_ORIGINAL"].strip() \
             if values.get("TITLE_ORIGINAL") is not None else self._title_original
@@ -152,6 +153,7 @@ class Txt2Docx:
 
         for line in lines:
             line = line.strip()
+            line = line.replace(" ", " ")
 
             if line:
                 if start_block:
@@ -209,10 +211,14 @@ class Txt2Docx:
             newlines_positions = self._find_all_substrings(text_block, "\n")
             new_text_block = text_block.split("\n")
 
-            # Make all first letters capitalized (should work for all cases, even if there's e.g. a "1. ",
+            # Make all first characters capitalized (should work for all cases, even if there's e.g. a "1. ",
             # since in this case nothing will happen and this lines' text always starts with a capital letter
             for b, block in enumerate(new_text_block):
                 new_text_block[b] = block[0].upper() + block[1:]
+
+            # Make all first characters after A: or V: capitalized
+            for b, block in enumerate(new_text_block):
+                new_text_block[b] = re.sub(r"[A|V]: .", lambda match_object: match_object.group(0).upper(), block)
 
             # If there are any bold parts in the current text block, determine for each line break
             # if it is within a bold area or not. If so, add a bold ending tag to the end of the line
@@ -428,6 +434,8 @@ class Txt2Docx:
 
 
 def main() -> None:
+
+
     """The main function which parses the program arguments and performs the conversion of the specified files."""
 
     def get_base_path_from_wildcard_path(wc_path: str) -> Tuple[str, int]:
