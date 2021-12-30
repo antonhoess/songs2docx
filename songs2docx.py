@@ -54,6 +54,7 @@ class Txt2Docx:
         self._title = None
         self._title_original = None
         self._ref_no = None
+        self._capo = None
         self._authors = None
         self._copyright = None
         self._tab_indent = 11.64
@@ -109,7 +110,7 @@ class Txt2Docx:
         lines = f.read().splitlines()
 
         # Read meta information - the assigned value indicates if this key is mandatory or not
-        keys = {"TITLE": True, "TITLE_ORIGINAL": False, "REF_NO": False,
+        keys = {"TITLE": True, "TITLE_ORIGINAL": False, "REF_NO": False, "CAPO": False,
                 "AUTHORS": True, "COPYRIGHT": True, "TAB_INDENT": False}
         values = dict()
         line_no = 0
@@ -143,6 +144,8 @@ class Txt2Docx:
             if values.get("TITLE_ORIGINAL") is not None else self._title_original
         self._ref_no = values.get("REF_NO").strip() \
             if values.get("REF_NO") is not None else None
+        self._capo = values["CAPO"].strip() \
+            if values.get("CAPO") is not None else self._title_original
         self._authors = values["AUTHORS"].strip()
         self._copyright = values["COPYRIGHT"].strip()
         self._tab_indent = float(values["TAB_INDENT"]) if values.get("TAB_INDENT") is not None else self._tab_indent
@@ -190,7 +193,10 @@ class Txt2Docx:
             run.font.highlight_color = docx.enum.text.WD_COLOR_INDEX.YELLOW
 
         # Authors
-        self._add_paragraph(text=self._authors, style="authors")
+        authors = self._authors
+        if self._capo is not None:
+            authors += "\tCapo " + self._capo
+        self._add_paragraph(text=authors, style="authors")
         self._add_paragraph(text="", style="empty_line")
 
         # Text
@@ -515,6 +521,11 @@ def main() -> None:
             # end for
         # end if
     # end for
+
+    if len(file_paths) == 0:
+        if not args.suppress_error_output:
+            raise ValueError(f"no input paths found in \"{args.paths}\"")
+        # end if
 
     # Remove duplicates
     # files = set(files)  # Not working anymore when not using pure filepaths
