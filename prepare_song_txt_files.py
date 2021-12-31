@@ -36,7 +36,7 @@ class Txt:
 class PreprocessTxt:
     """The preprocessing class."""
 
-    def __init__(self, fn_db: str, db_header_offset: int, cols: Dict[str, str], song_name_assignment: Optional[str] = None) -> None:
+    def __init__(self, fn_db: str, db_header_offset: int, cols: Dict[str, str], country_lang_assignment: Dict[str, str], song_name_assignment: Optional[str] = None) -> None:
         """Initializes the Converter.
 
         Parameters
@@ -47,6 +47,8 @@ class PreprocessTxt:
             The number of rows to ignore before interpreting data as header and body.
         db_header_offset : dict of int, int
             Dictionary holding the required columns and their internally used names.
+        country_lang_assignment : dict of str, str
+            The assignment dictionary of country to language codes.
         song_name_assignment : str
             The song name assignment filename.
         """
@@ -54,6 +56,7 @@ class PreprocessTxt:
         self._fn_db = fn_db
         self._db_header_offset = db_header_offset
         self._cols = cols
+        self._country_lang_assignment = country_lang_assignment
         self._song_name_assignment = song_name_assignment
 
         # Read data from Excel database
@@ -164,6 +167,7 @@ class PreprocessTxt:
 
         title = cur_song_title
         title_original = entry.TITLE_ORIGINAL.values[0]
+        title_original_lang = entry.TITLE_ORIGINAL_LANG.values[0]
         ref_no = entry.REF_NO.values[0]
         copy_right = entry.COPYRIGHT.values[0].splitlines()
         # year_of_translation = entry.YEAR_OF_TRANSLATION.values[0]
@@ -172,6 +176,12 @@ class PreprocessTxt:
         title = title.strip()
         if not pd.isna(title_original):
             title_original = title_original.strip()
+        if not pd.isna(title_original_lang):
+            lang = self._country_lang_assignment.get(title_original_lang.strip())
+            if lang is not None:
+                title_original_lang = lang
+            else:
+                raise ValueError(f'TITLE_ORIGINAL_LANG ({title_original_lang}) not in country language assignment dict ({self._country_lang_assignment}).')
         if not pd.isna(ref_no):
             ref_no = ref_no.strip()
         else:
@@ -183,9 +193,12 @@ class PreprocessTxt:
         # Compile header
         header = ""
         header += f"TITLE={title}\n"
-        if not pd.isna(title_original) and ref_no == "NOREF":
+        if not pd.isna(title_original):
             header += f"TITLE_ORIGINAL={title_original}\n"
+            if not pd.isna(title_original_lang):
+                header += f"TITLE_ORIGINAL_LANG={title_original_lang}\n"
         header += f"REF_NO={ref_no}\n"
+        # No CAPO
         header += f"AUTHORS={copy_right[0]}\n"
         header += f"COPYRIGHT={copy_right[1]}\n"
 
@@ -284,15 +297,30 @@ def main() -> None:
     parser.add_argument("--db_header_offset", type=int, required=False, default=8,
                         help="Number of lines to skip before interpreting the remaining data as header and data.")
     parser.add_argument("--cols", type=json.loads, required=False,
-                        default='{"Ref.-Nr.:": "REF_NO",'
+                        default='{'
+                                '"Ref.-Nr.:": "REF_NO",'
                                 '"Titel": "TITLE",'
+                                '"Originaltitel": "TITLE_ORIGINAL",'
+                                '"Ursprungsland": "TITLE_ORIGINAL_LANG",'
                                 '"Gesamte Copyrightangabe © (extern)": "COPYRIGHT",'
-                                '"Übersetzungsjahr": "YEAR_OF_TRANSLATION",'
-                                '"Originaltitel": "TITLE_ORIGINAL"}',
+                                '"Übersetzungsjahr": "YEAR_OF_TRANSLATION"'
+                                '}',
                         help="Excel database file.")
     parser.add_argument("--song_name_assignment", type=str, required=False, default=None,
                         help="Song name assignment filename. Necessary to assign TXT files with database entries in cases they were not written the same."
                              "The format of each line is as follows: \"<TITLE_TXT>=<TITLE_DB>\". Comment lines need to start with #.")
+    parser.add_argument("--country_lang_assignment", type=json.loads, required=False,
+                        default='{'
+                                '"AT": "DE",'
+                                '"DE": "DE",'
+                                '"EN": "EN",'
+                                '"USA": "EN",'
+                                '"FR": "FR",'
+                                '"IT": "IT",'
+                                '"NL": "NL",'
+                                '"PL": "PL"'
+                                '}',
+                        help="Country to language assignment (ISO 639).")
 
     # Parse arguments
     args = parser.parse_args()
@@ -323,7 +351,8 @@ def main() -> None:
     pp = None
     try:
         # Load preprocessor
-        pp = PreprocessTxt(fn_db=fn_song_db, db_header_offset=args.db_header_offset, cols=args.cols, song_name_assignment=args.song_name_assignment)
+        pp = PreprocessTxt(fn_db=fn_song_db, db_header_offset=args.db_header_offset, cols=args.cols, country_lang_assignment=args.country_lang_assignment,
+                           song_name_assignment=args.song_name_assignment)
 
     except Exception as e:
         print(f"\n=> ERROR on opening Excel database occurred: {e}")

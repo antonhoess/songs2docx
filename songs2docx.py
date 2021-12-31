@@ -2,7 +2,7 @@
 
 """This program allows the conversion from TXT files in a certain format to a DOCX file in a certain format."""
 
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Dict, Optional
 from docx import Document
 from docx.enum.style import WD_STYLE_TYPE
 import docx.enum.text
@@ -14,6 +14,7 @@ import argparse
 import glob
 import os.path
 from collections import namedtuple
+import json
 
 
 __author__ = "Anton Höß"
@@ -53,6 +54,7 @@ class Txt2Docx:
         # Read the file
         self._title = None
         self._title_original = None
+        self._title_original_lang = None
         self._ref_no = None
         self._capo = None
         self._authors = None
@@ -110,7 +112,7 @@ class Txt2Docx:
         lines = f.read().splitlines()
 
         # Read meta information - the assigned value indicates if this key is mandatory or not
-        keys = {"TITLE": True, "TITLE_ORIGINAL": False, "REF_NO": False, "CAPO": False,
+        keys = {"TITLE": True, "TITLE_ORIGINAL": False, "TITLE_ORIGINAL_LANG": False, "REF_NO": False, "CAPO": False,
                 "AUTHORS": True, "COPYRIGHT": True, "TAB_INDENT": False}
         values = dict()
         line_no = 0
@@ -142,10 +144,12 @@ class Txt2Docx:
         self._title = values["TITLE"].strip().upper()
         self._title_original = values["TITLE_ORIGINAL"].strip() \
             if values.get("TITLE_ORIGINAL") is not None else self._title_original
+        self._title_original_lang = values["TITLE_ORIGINAL_LANG"].strip() \
+            if values.get("TITLE_ORIGINAL_LANG") is not None else self._title_original_lang
         self._ref_no = values.get("REF_NO").strip() \
             if values.get("REF_NO") is not None else None
         self._capo = values["CAPO"].strip() \
-            if values.get("CAPO") is not None else self._title_original
+            if values.get("CAPO") is not None else self._capo
         self._authors = values["AUTHORS"].strip()
         self._copyright = values["COPYRIGHT"].strip()
         self._tab_indent = float(values["TAB_INDENT"]) if values.get("TAB_INDENT") is not None else self._tab_indent
@@ -181,11 +185,7 @@ class Txt2Docx:
         """Builds the DOCX document from the previously parsed meta values and text blocks."""
 
         # Title
-        title = self._title
-
-        if self._title_original is not None:
-            title += " # " + self._title_original
-        p = self._add_paragraph(text=title, style="title")
+        p = self._add_paragraph(text=self._title, style="title")
 
         if self._ref_no is not None:
             p.add_run(text="\t")
@@ -277,8 +277,21 @@ class Txt2Docx:
             # end if
         # end def
 
-        # Copyright
+        # Copyright block
+        # # Original title
         self._add_paragraph(text="", style="empty_line")
+
+        if self._title_original is not None:
+            title_original = "Originaltitel"
+
+            if self._title_original_lang is not None:
+                title_original += f" ({self._title_original_lang})"
+
+            title_original += f" : {self._title_original}"
+            self._add_paragraph(text=title_original, style="empty_line")
+        # end if
+
+        # # Copyright
         self._add_paragraph(text=self._copyright, style="empty_line")
     # end def
 
@@ -440,8 +453,6 @@ class Txt2Docx:
 
 
 def main() -> None:
-
-
     """The main function which parses the program arguments and performs the conversion of the specified files."""
 
     def get_base_path_from_wildcard_path(wc_path: str) -> Tuple[str, int]:
@@ -524,7 +535,7 @@ def main() -> None:
 
     if len(file_paths) == 0:
         if not args.suppress_error_output:
-            raise ValueError(f"no input paths found in \"{args.paths}\"")
+            raise ValueError(f"No input paths found in \"{args.paths}\".")
         # end if
 
     # Remove duplicates
