@@ -54,7 +54,10 @@ class Txt2Docx:
         # Read the file
         self._title = None
         self._title_original = None
-        self._title_original_lang = None
+        self._lang_original = None
+        self._year_original = None
+        self._year_translation = None
+        self._german_translation = None
         self._ref_no = None
         self._capo = None
         self._authors = None
@@ -112,7 +115,9 @@ class Txt2Docx:
         lines = f.read().splitlines()
 
         # Read meta information - the assigned value indicates if this key is mandatory or not
-        keys = {"TITLE": True, "TITLE_ORIGINAL": False, "TITLE_ORIGINAL_LANG": False, "REF_NO": False, "CAPO": False,
+        keys = {"TITLE": True, "TITLE_ORIGINAL": False,
+                "LANG_ORIGINAL": False, "YEAR_ORIGINAL": False, "YEAR_TRANSLATION": False, "GERMAN_TRANSLATION": False,
+                "REF_NO": False, "CAPO": False,
                 "AUTHORS": True, "COPYRIGHT": True, "TAB_INDENT": False}
         values = dict()
         line_no = 0
@@ -144,8 +149,14 @@ class Txt2Docx:
         self._title = values["TITLE"].strip().upper()
         self._title_original = values["TITLE_ORIGINAL"].strip() \
             if values.get("TITLE_ORIGINAL") is not None else self._title_original
-        self._title_original_lang = values["TITLE_ORIGINAL_LANG"].strip() \
-            if values.get("TITLE_ORIGINAL_LANG") is not None else self._title_original_lang
+        self._lang_original = values["LANG_ORIGINAL"].strip() \
+            if values.get("LANG_ORIGINAL") is not None else self._lang_original
+        self._year_original = values["YEAR_ORIGINAL"].strip() \
+            if values.get("YEAR_ORIGINAL") is not None else self._year_original
+        self._year_translation = values["YEAR_TRANSLATION"].strip() \
+            if values.get("YEAR_TRANSLATION") is not None else self._year_translation
+        self._german_translation = values["GERMAN_TRANSLATION"].strip() \
+            if values.get("GERMAN_TRANSLATION") is not None else self._german_translation
         self._ref_no = values.get("REF_NO").strip() \
             if values.get("REF_NO") is not None else None
         self._capo = values["CAPO"].strip() \
@@ -284,14 +295,30 @@ class Txt2Docx:
         if self._title_original is not None:
             title_original = "Originaltitel"
 
-            if self._title_original_lang is not None:
-                title_original += f" ({self._title_original_lang})"
+            # Original language
+            if self._lang_original is not None:
+                title_original += f" ({self._lang_original})"
 
             title_original += f" : {self._title_original}"
             self._add_paragraph(text=title_original, style="empty_line")
+
+            # Original copyright
+            copyright_original = r"©"
+            copyright_original += f" {self._year_original}" if self._year_original is not None else "<Jahr des Originals>"
+            copyright_original += f", <Vollständige Original-Copyright-Adresse>"
+            self._add_paragraph(text=copyright_original, style="empty_line")
+
+            # Translation
+            translation = "Übersetzung : "
+            translation += f"{self._german_translation}" if self._german_translation is not None else "<Deutsche Übersetzung>"
+            translation += f" © "
+            translation += f"{self._year_translation}" if self._year_translation is not None else "<Übersetzungsjahr>"
+            translation += f", <Vollständige Übersetzungs-Copyright-Adresse>"
+            self._add_paragraph(text=translation, style="empty_line")
         # end if
 
-        # # Copyright
+        # Copyright
+        self._add_paragraph(text="", style="empty_line")
         self._add_paragraph(text=self._copyright, style="empty_line")
     # end def
 

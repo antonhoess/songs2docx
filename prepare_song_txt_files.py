@@ -167,38 +167,46 @@ class PreprocessTxt:
 
         title = cur_song_title
         title_original = entry.TITLE_ORIGINAL.values[0]
-        title_original_lang = entry.TITLE_ORIGINAL_LANG.values[0]
+        lang_original = entry.LANG_ORIGINAL.values[0]
+        year_original = entry.YEAR_ORIGINAL.values[0]
         ref_no = entry.REF_NO.values[0]
         copy_right = entry.COPYRIGHT.values[0].splitlines()
-        # year_of_translation = entry.YEAR_OF_TRANSLATION.values[0]
+        year_translation = entry.YEAR_TRANSLATION.values[0]
+        german_translation = entry.GERMAN_TRANSLATION.values[0]
 
         # Strip entries (just to be sure)
         title = title.strip()
         if not pd.isna(title_original):
             title_original = title_original.strip()
-        if not pd.isna(title_original_lang):
-            lang = self._country_lang_assignment.get(title_original_lang.strip())
+        if not pd.isna(lang_original):
+            lang = self._country_lang_assignment.get(lang_original.strip())
             if lang is not None:
-                title_original_lang = lang
+                lang_original = lang
             else:
-                raise ValueError(f'TITLE_ORIGINAL_LANG ({title_original_lang}) not in country language assignment dict ({self._country_lang_assignment}).')
+                raise ValueError(f'LANG_ORIGINAL ({lang_original}) not in country language assignment dict ({self._country_lang_assignment}).')
         if not pd.isna(ref_no):
             ref_no = ref_no.strip()
         else:
             ref_no = "NOREF"
         copy_right = [line.strip() for line in copy_right]
-        # if not pd.isna(year_of_translation):
-        #     year_of_translation = year_of_translation.strip()
+        if not pd.isna(year_translation):
+            year_translation = year_translation.strip()
 
         # Compile header
         header = ""
         header += f"TITLE={title}\n"
-        if not pd.isna(title_original):
+        if not pd.isna(title_original) and title_original.strip().lower() != "x":
             header += f"TITLE_ORIGINAL={title_original}\n"
-            if not pd.isna(title_original_lang):
-                header += f"TITLE_ORIGINAL_LANG={title_original_lang}\n"
+            if not pd.isna(lang_original) and lang_original.strip().lower() != "x":
+                header += f"LANG_ORIGINAL={lang_original}\n"
+            if not pd.isna(year_original) and year_original.strip().lower() != "x":
+                header += f"YEAR_ORIGINAL={year_original}\n"
+            if not pd.isna(year_translation) and year_translation.strip().lower() != "x":
+                header += f"YEAR_TRANSLATION={year_translation}\n"
+            if not pd.isna(german_translation) and german_translation.strip().lower() != "x":
+                header += f"GERMAN_TRANSLATION={german_translation}\n"
         header += f"REF_NO={ref_no}\n"
-        # No CAPO
+        header += f"CAPO=<CAPO>\n"  # CAPO information not available - needs to be added manually or deleted when not used
         header += f"AUTHORS={copy_right[0]}\n"
         header += f"COPYRIGHT={copy_right[1]}\n"
 
@@ -301,9 +309,11 @@ def main() -> None:
                                 '"Ref.-Nr.:": "REF_NO",'
                                 '"Titel": "TITLE",'
                                 '"Originaltitel": "TITLE_ORIGINAL",'
-                                '"Ursprungsland": "TITLE_ORIGINAL_LANG",'
-                                '"Gesamte Copyrightangabe © (extern)": "COPYRIGHT",'
-                                '"Übersetzungsjahr": "YEAR_OF_TRANSLATION"'
+                                '"Ursprungsland": "LANG_ORIGINAL",'
+                                '"Jahr des Originals": "YEAR_ORIGINAL",'
+                                '"Übersetzungsjahr": "YEAR_TRANSLATION",'
+                                '"Deutsche Übersetzung": "GERMAN_TRANSLATION"'
+                                '"Gesamte Copyrightangabe © (extern)": "COPYRIGHT",'  # For fields AUTHORS and COPYRIGHT
                                 '}',
                         help="Excel database file.")
     parser.add_argument("--song_name_assignment", type=str, required=False, default=None,
