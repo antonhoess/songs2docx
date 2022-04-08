@@ -212,6 +212,9 @@ class Txt2Docx:
 
         # Text
         for tb, text_block in enumerate(self._text):
+            if text_block is None:
+                continue
+
             bold_indices = self._get_bold_indices(text_block)
 
             # Check if all starting and ending marker indices are in ascending order

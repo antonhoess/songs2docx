@@ -77,11 +77,19 @@ class PreprocessTxt:
                     data = data.splitlines()
 
                     for line in data:
-                        line = line.strip()
-                        if line == "" or len(line) >= 1 and line[0] == "#":  # Don't allow inline comments tho prevent problems in case "#" is part of the song name
+                        line = line.strip()  #XXX Do not strip as there might be leading of trailing whitespaces involved
+                        if line == "" or len(line) >= 1 and line[0] == "#":  # Don't allow inline comments to prevent problems in case "#" is part of the song name
                             continue
-                        song_name_file, song_name_db = line.split("=")
-                        self._name_changes[song_name_file] = song_name_db.replace(r"\n", "\n")
+                        fields = line.split("=")
+
+                        if len(fields) < 2:
+                            raise ValueError(f"The line \"{line}\" of the specified song name assignment does not contain enough fields.")
+                        else:
+                            song_name_file = fields[0]
+                            song_name_db = fields[1]
+                            output_filename = fields[2] if len(fields) >= 3 else None
+
+                        self._name_changes[song_name_file] = (song_name_db.replace(r"\n", "\n"), output_filename)
                     # end for
                 # end with
             # end if
@@ -157,13 +165,22 @@ class PreprocessTxt:
 
         # Resolve names that are not matching between the TXT files and the entry in the database
         tmp_cur_song_title = cur_song_title
+        output_filename = cur_song_title
         if cur_song_title in self._name_changes:
-            tmp_cur_song_title = self._name_changes[cur_song_title]
+            tmp_cur_song_title, tmp_output_filename = self._name_changes[cur_song_title]
+
+            if tmp_output_filename is not None:
+                output_filename = tmp_output_filename
 
         # Get all associated data from db
-        entry = self._df.loc[self._df['TITLE'] == tmp_cur_song_title]  # old: entry = self._df[self._df["TITLE"].str.fullmatch(tmp_cur_song_title).fillna(False)]
+        entry = self._df.loc[self._df['TITLE'].str.strip().str.lower() == tmp_cur_song_title.lower()]  # old: entry = self._df[self._df["TITLE"].str.fullmatch(tmp_cur_song_title).fillna(False)]
         if entry.size == 0:
-            raise ValueError(f"Entry with title \"{tmp_cur_song_title}\" not found in Excel database.")
+            # 2nd chance with some modifications
+            entry = self._df.loc[self._df['TITLE'].str.strip().str.lower() == tmp_cur_song_title.lower().replace("–", "-")]
+            if entry.size == 0:
+                entry = self._df.loc[self._df['TITLE'].str.strip().str.lower() == "messe " + tmp_cur_song_title.lower().replace("–", "-")]
+                if entry.size == 0:
+                    raise ValueError(f"Entry with title \"{tmp_cur_song_title}\" not found in Excel database.")
 
         title = cur_song_title
         title_original = entry.TITLE_ORIGINAL.values[0]
@@ -211,7 +228,7 @@ class PreprocessTxt:
         header += f"COPYRIGHT={copy_right[1]}\n"
 
         # Create result object
-        return Txt(header=header, body=data, fn_out=f"{cur_song_title.replace(':', '')} {ref_no}.txt")
+        return Txt(header=header, body=data, fn_out=f"{output_filename.replace(':', '').replace('/', ' ')} {ref_no}.txt")
     # end def
 
     @staticmethod
@@ -312,8 +329,8 @@ def main() -> None:
                                 '"Ursprungsland": "LANG_ORIGINAL",'
                                 '"Jahr des Originals": "YEAR_ORIGINAL",'
                                 '"Übersetzungsjahr": "YEAR_TRANSLATION",'
-                                '"Deutsche Übersetzung": "GERMAN_TRANSLATION"'
-                                '"Gesamte Copyrightangabe © (extern)": "COPYRIGHT",'  # For fields AUTHORS and COPYRIGHT
+                                '"Deutsche Übersetzung": "GERMAN_TRANSLATION",'
+                                '"Gesamte Copyrightangabe © (extern)": "COPYRIGHT"'  # For fields AUTHORS and COPYRIGHT
                                 '}',
                         help="Excel database file.")
     parser.add_argument("--song_name_assignment", type=str, required=False, default=None,
