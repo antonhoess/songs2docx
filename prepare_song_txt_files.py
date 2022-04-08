@@ -156,6 +156,7 @@ class PreprocessTxt:
             #######################
             data = data.replace(" ", " ")
             data = data.replace("͜", "")
+            data = data.replace("Vers:\n", "")
             data = data.replace("Verse:\n", "")
             data = data.replace("REFRAIN:", "Refrain:")
             data = data.replace("Refrain:\n", "R. ")
